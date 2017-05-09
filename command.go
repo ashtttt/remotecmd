@@ -2,12 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 
 	"log"
 
 	"github.com/ashtttt/remotecmd/ssh"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/mitchellh/colorstring"
 )
 
@@ -41,7 +45,7 @@ func (g *GenerateCommand) Run() error {
 		Remote: &Remote{
 			Hosts: []string{"1.1.1.1", "0.0.0.0", "2.2.2.2"},
 			Aws: &Aws{
-				Nameprefix: "test",
+				Nameprefix: "",
 			},
 			User: "ec2-user",
 		},
@@ -101,6 +105,10 @@ func (r *RunCommand) Run() error {
 		return err
 	}
 
+	if len(r.Input.Remote.Aws.Nameprefix) > 0 {
+		data, err := getAWSNodes(r.Input.Remote.Aws.Nameprefix)
+	}
+
 	config := &ssh.Config{
 		User:        r.Input.Remote.User,
 		Nodes:       r.Input.Remote.Hosts,
@@ -123,4 +131,29 @@ func (r *RunCommand) Run() error {
 func (r *RunCommand) Set(templateName string) error {
 	r.TemplateName = templateName
 	return nil
+}
+
+func getAWSNodes(namePrefix string) ([]string, error) {
+	sess := session.Must(session.NewSession())
+	svc := ec2.New(sess)
+
+	params := &ec2.DescribeInstancesInput{
+		DryRun: aws.Bool(true),
+		Filters: []*ec2.Filter{
+			{
+				Name: "Name",
+				Values: []*string{
+					"devnx-idp",
+				},
+			},
+		},
+	}
+	resp, err := svc.DescribeInstances(params)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(resp)
+
+	return nil, nil
+
 }

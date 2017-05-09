@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 
+	"time"
+
 	"github.com/mitchellh/colorstring"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -66,6 +68,9 @@ func (c *comm) Run() (int, error) {
 			colorstring.Println("[green]completed execution on node " + ip)
 		case error := <-erchn:
 			return 1, error
+		case <-time.After(1 * time.Second):
+			fmt.Printf("waiting after.... ")
+
 		}
 	}
 
