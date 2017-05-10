@@ -1,9 +1,9 @@
 package main
 
 type Template struct {
-	Bastion  *Bastion `json:"bastion"`
-	Remote   *Remote  `json:"remote"`
-	Commands []string `json:"commands"`
+	Bastion *Bastion `json:"bastion"`
+	Remote  *Remote  `json:"remote"`
+	Command string   `json:"command"`
 }
 
 type Bastion struct {

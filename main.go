@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
 	"os"
+
+	"github.com/mitchellh/colorstring"
 )
 
 func main() {
@@ -14,12 +14,8 @@ func main() {
 	err := cli.Run()
 
 	if err != nil {
-		fmt.Println(err)
+		colorstring.Println("[red]" + err.Error())
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter text: ")
-	text, _ := reader.ReadString('\n')
-	fmt.Println(text)
 	os.Exit(0)
 }

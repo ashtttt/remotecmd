@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -63,7 +62,6 @@ func (c *CLI) Run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(c.Args)
 	return nil
 }
 

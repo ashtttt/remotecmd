@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-
-	"log"
+	"time"
 
 	"github.com/ashtttt/remotecmd/ssh"
 	"github.com/aws/aws-sdk-go/aws"
@@ -43,13 +42,13 @@ func (g *GenerateCommand) Run() error {
 			User: "admin",
 		},
 		Remote: &Remote{
-			Hosts: []string{"1.1.1.1", "0.0.0.0", "2.2.2.2"},
+			Hosts: []string{},
 			Aws: &Aws{
 				Nameprefix: "",
 			},
 			User: "ec2-user",
 		},
-		Commands: []string{"ls -lrth /usr/"},
+		Command: "ls -lrth /usr/",
 	}
 
 	templateJSON, _ := json.Marshal(example)
@@ -61,7 +60,7 @@ func (g *GenerateCommand) Run() error {
 	if err != nil {
 		return err
 	}
-	colorstring.Println("A sample template has been created in currect directory")
+	colorstring.Println("[green]a sample template has been placed in currect directory")
 	return nil
 }
 
@@ -80,7 +79,6 @@ func (v *ValidateCommand) Run() error {
 	}
 
 	err = json.Unmarshal([]byte(string(content)), &v.Input)
-	log.Println(v.Input.Commands)
 	if err != nil {
 		return err
 	}
@@ -106,7 +104,11 @@ func (r *RunCommand) Run() error {
 	}
 
 	if len(r.Input.Remote.Aws.Nameprefix) > 0 {
-		data, err := getAWSNodes(r.Input.Remote.Aws.Nameprefix)
+		instances, err := getAWSNodes(r.Input.Remote.Aws.Nameprefix)
+		if err != nil {
+			fmt.Println(err)
+		}
+		r.Input.Remote.Hosts = append(r.Input.Remote.Hosts, instances...)
 	}
 
 	config := &ssh.Config{
@@ -114,17 +116,29 @@ func (r *RunCommand) Run() error {
 		Nodes:       r.Input.Remote.Hosts,
 		BastionHost: r.Input.Bastion.Host,
 		BastionUser: r.Input.Bastion.User,
-		Command:     "ls -lrth /usr/",
+		Command:     r.Input.Command,
 	}
 
 	comm := ssh.New(config)
-
-	_, err = comm.Run()
-
-	if err != nil {
-		return err
+	colorstring.Println("[yellow]command will be executed in fallowing nodes. Verify and confirm by typing yes")
+	for _, ip := range r.Input.Remote.Hosts {
+		colorstring.Printf("[yellow] %s \n", ip)
 	}
-	colorstring.Println("[green] Command completed in all hosts")
+	colorstring.Printf("Enter (yes) or (no):")
+	var confirmation string
+	fmt.Scanf("%s", &confirmation)
+
+	if confirmation == "yes" {
+		now := time.Now()
+		_, err = comm.Run()
+
+		if err != nil {
+			return err
+		}
+		colorstring.Printf("[green]command executed on all nodes. Elapsed time: %d sec \n", time.Since(now)/time.Second)
+	} else {
+		colorstring.Println("[red]operation has been cancelled")
+	}
 	return nil
 }
 
@@ -134,16 +148,25 @@ func (r *RunCommand) Set(templateName string) error {
 }
 
 func getAWSNodes(namePrefix string) ([]string, error) {
-	sess := session.Must(session.NewSession())
+	var ips []string
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String("us-east-1"),
+	}))
+
 	svc := ec2.New(sess)
 
 	params := &ec2.DescribeInstancesInput{
-		DryRun: aws.Bool(true),
 		Filters: []*ec2.Filter{
 			{
-				Name: "Name",
+				Name: aws.String("tag:Name"),
 				Values: []*string{
-					"devnx-idp",
+					aws.String(namePrefix + "*"),
+				},
+			},
+			{
+				Name: aws.String("instance-state-name"),
+				Values: []*string{
+					aws.String("running"),
 				},
 			},
 		},
@@ -152,8 +175,13 @@ func getAWSNodes(namePrefix string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(resp)
 
-	return nil, nil
+	for idx := range resp.Reservations {
+		for _, instance := range resp.Reservations[idx].Instances {
+
+			ips = append(ips, *instance.PrivateIpAddress)
+		}
+	}
+	return ips, nil
 
 }

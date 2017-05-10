@@ -42,38 +42,48 @@ func (c *comm) Run() (int, error) {
 	chn := make(chan string, len(c.config.Nodes))
 	erchn := make(chan error, len(c.config.Nodes))
 
+	now := time.Now()
+	timeout := time.After(1 * time.Minute)
+
+	tempNodes := make([]string, len(c.config.Nodes))
+
+	copy(tempNodes, c.config.Nodes)
+
 	for _, node := range c.config.Nodes {
 		go func(node string) {
+
 			session, err := c.newSession(node)
 			if err != nil {
 				erchn <- err
 			}
-			defer session.Close()
-
 			session.Stdin = os.Stdin
 			session.Stdout = os.Stdout
 			session.Stderr = os.Stderr
-
 			err = session.Run(c.config.Command)
 			chn <- node
-
 			defer c.client.Close()
-
+			defer session.Close()
 		}(node)
 	}
 
-	for i := 0; i < len(c.config.Nodes); i++ {
+	for i := 0; i < len(c.config.Nodes); {
 		select {
-		case ip := <-chn:
-			colorstring.Println("[green]completed execution on node " + ip)
+		case node := <-chn:
+			colorstring.Println("[yellow]completed execution on node " + node)
+			tempNodes = removeItem(node, tempNodes)
+			i++
 		case error := <-erchn:
 			return 1, error
-		case <-time.After(1 * time.Second):
-			fmt.Printf("waiting after.... ")
-
+		case <-time.After(10 * time.Second):
+			fmt.Printf("still continuing after.... %d sec \n", time.Since(now)/time.Second)
+		case <-timeout:
+			colorstring.Println("[red]fallowing nodes did not get completed")
+			for _, ip := range tempNodes {
+				colorstring.Println("[red]" + ip)
+			}
+			return 1, errors.New("operation took more than a minute, exiting. There may be a un-fineshed nodes. Please check output")
 		}
 	}
-
 	return 0, nil
 }
 
@@ -95,7 +105,6 @@ func (c *comm) newSession(node string) (*ssh.Session, error) {
 	}
 
 	sshConn, sshChan, req, err := ssh.NewClientConn(conn, node+":22", clientConfig)
-	//defer sshConn.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +128,7 @@ func (c *comm) newSession(node string) (*ssh.Session, error) {
 func (c *comm) getBastion() error {
 	socketlocation := os.Getenv("SSH_AUTH_SOCK")
 	if socketlocation == "" {
-		return fmt.Errorf("%s", errors.New("No SSH Agent is running"))
+		return fmt.Errorf("%s", errors.New("ssh agent is NOT running. Please start to continue"))
 	}
 
 	agentConn, err := net.Dial("unix", socketlocation)
@@ -147,4 +156,13 @@ func (c *comm) getBastion() error {
 
 	}
 	return nil
+}
+
+func removeItem(item string, arry []string) []string {
+	for i, val := range arry {
+		if val == item {
+			arry = append(arry[:i], arry[i+1:]...)
+		}
+	}
+	return arry
 }
