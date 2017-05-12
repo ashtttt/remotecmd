@@ -3,13 +3,15 @@ package main
 import (
 	"errors"
 	"strings"
+
+	"github.com/mitchellh/colorstring"
 )
 
 type CLI struct {
 	Args     []string
 	Commands map[string]func() Command
 
-	needHelp bool
+	NeedHelp bool
 	cmdArg   string
 	paramArg string
 }
@@ -19,12 +21,12 @@ var template *Template
 func NewCLI() *CLI {
 	return &CLI{
 		Commands: map[string]func() Command{
-			"generate": func() Command {
+			"gen": func() Command {
 				return &GenerateCommand{
 					Input: template,
 				}
 			},
-			"validate": func() Command {
+			"val": func() Command {
 				return &ValidateCommand{
 					Input: template,
 				}
@@ -44,15 +46,9 @@ func (c *CLI) Run() error {
 	if err != nil {
 		return err
 	}
-
-	if c.needHelp {
-		c.printHelp()
-		return nil
-	}
-
 	raw, ok := c.Commands[c.cmdArg]
 	if !ok {
-		c.printHelp()
+		c.PrintHelp()
 	}
 	command := raw()
 
@@ -67,11 +63,11 @@ func (c *CLI) Run() error {
 
 func (c *CLI) validateArgs() error {
 	if len(c.Args) > 2 {
-		c.needHelp = true
+		c.NeedHelp = true
 		return errors.New("Too manay arguments specified")
 	}
 	if len(c.Args) < 2 {
-		c.needHelp = true
+		c.NeedHelp = true
 		return errors.New("remotecmd requires atleast two arguments")
 	}
 
@@ -80,18 +76,24 @@ func (c *CLI) validateArgs() error {
 
 	_, ok := c.Commands[c.cmdArg]
 	if ok != true {
-		c.needHelp = true
+		c.NeedHelp = true
 		return errors.New("Command NOT supported, please see help")
 	}
 
 	if !strings.HasSuffix(c.paramArg, ".json") {
-		c.needHelp = true
-		return errors.New("template file should only be a JSON doc")
+		c.NeedHelp = true
+		return errors.New("Template file should only be JSON doc")
 	}
 	return nil
 
 }
 
-func (c *CLI) printHelp() {
-
+func (c *CLI) PrintHelp() {
+	var usage = `Usage: remotecmd [command...] <template.json>
+Commands:
+  -gen		Generates a sample template in working directory.
+  -val		Validates the input template.
+  -run		Runs the provided command on remote hosts.
+`
+	colorstring.Println("[red]" + usage)
 }

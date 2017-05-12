@@ -7,6 +7,10 @@ import (
 	"os"
 	"time"
 
+	"errors"
+
+	"strconv"
+
 	"github.com/ashtttt/remotecmd/ssh"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -44,14 +48,14 @@ func (g *GenerateCommand) Run() error {
 		Remote: &Remote{
 			Hosts: []string{},
 			Aws: &Aws{
-				Nameprefix: "",
+				Nameprefix: "test",
 			},
 			User: "ec2-user",
 		},
-		Command: "ls -lrth /usr/",
+		Command: "ls -l /usr/",
 	}
 
-	templateJSON, _ := json.Marshal(example)
+	templateJSON, _ := json.MarshalIndent(example, "", "    ")
 	data := []byte(string(templateJSON))
 
 	filepath, err := os.Getwd()
@@ -60,7 +64,7 @@ func (g *GenerateCommand) Run() error {
 	if err != nil {
 		return err
 	}
-	colorstring.Println("[green]a sample template has been placed in currect directory")
+	colorstring.Println("[green]Sample template has been placed in current directory")
 	return nil
 }
 
@@ -72,13 +76,16 @@ func (g *GenerateCommand) Set(templateName string) error {
 func (v *ValidateCommand) Run() error {
 
 	filepath, err := os.Getwd()
-
 	content, err := ioutil.ReadFile(filepath + "/" + v.TemplateName)
 	if err != nil {
 		return err
 	}
-
 	err = json.Unmarshal([]byte(string(content)), &v.Input)
+	if err != nil {
+		return err
+	}
+
+	err = validateInput(v.Input)
 	if err != nil {
 		return err
 	}
@@ -103,6 +110,11 @@ func (r *RunCommand) Run() error {
 		return err
 	}
 
+	err = validateInput(r.Input)
+	if err != nil {
+		return err
+	}
+
 	if len(r.Input.Remote.Aws.Nameprefix) > 0 {
 		instances, err := getAWSNodes(r.Input.Remote.Aws.Nameprefix)
 		if err != nil {
@@ -120,7 +132,7 @@ func (r *RunCommand) Run() error {
 	}
 
 	comm := ssh.New(config)
-	colorstring.Println("[yellow]command will be executed in fallowing nodes. Verify and confirm by typing yes")
+	colorstring.Printf("[yellow]Command: `%s` will be executed in fallowing nodes.Please confirm \n", r.Input.Command)
 	for _, ip := range r.Input.Remote.Hosts {
 		colorstring.Printf("[yellow] %s \n", ip)
 	}
@@ -128,16 +140,16 @@ func (r *RunCommand) Run() error {
 	var confirmation string
 	fmt.Scanf("%s", &confirmation)
 
-	if confirmation == "yes" {
+	if confirmation == "yes" || confirmation == "y" {
 		now := time.Now()
 		_, err = comm.Run()
 
 		if err != nil {
 			return err
 		}
-		colorstring.Printf("[green]command executed on all nodes. Elapsed time: %d sec \n", time.Since(now)/time.Second)
+		colorstring.Printf("[green]Command executed on all nodes. Elapsed time: %d sec \n", time.Since(now)/time.Second)
 	} else {
-		colorstring.Println("[red]operation has been cancelled")
+		colorstring.Println("[red]Command execution cancelled!")
 	}
 	return nil
 }
@@ -149,9 +161,7 @@ func (r *RunCommand) Set(templateName string) error {
 
 func getAWSNodes(namePrefix string) ([]string, error) {
 	var ips []string
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("us-east-1"),
-	}))
+	sess := session.Must(session.NewSession())
 
 	svc := ec2.New(sess)
 
@@ -184,4 +194,32 @@ func getAWSNodes(namePrefix string) ([]string, error) {
 	}
 	return ips, nil
 
+}
+
+func validateInput(input *Template) error {
+	valErrors := []string{}
+	if len(input.Bastion.Host) <= 0 {
+		valErrors = append(valErrors, "Bastion host is requred! Please verify input template \n")
+	}
+	if len(input.Bastion.User) <= 0 {
+		valErrors = append(valErrors, "Bastion user name is required! Please verify input template \n")
+	}
+	if len(input.Remote.Hosts) <= 0 && len(input.Remote.Aws.Nameprefix) <= 0 {
+		valErrors = append(valErrors, "Eithier remote hosts or AWS name-prefix required! Please verify input template \n")
+	}
+	if len(input.Remote.User) <= 0 {
+		valErrors = append(valErrors, "Remote host user name is required! Please verify input template \n")
+	}
+	if len(input.Command) <= 0 {
+		valErrors = append(valErrors, "Command is required! Please verify input template \n")
+	}
+
+	if len(valErrors) > 0 {
+		var multiErrors string
+		for i, err := range valErrors {
+			multiErrors = multiErrors + strconv.Itoa(i) + "." + err
+		}
+		return errors.New(multiErrors)
+	}
+	return nil
 }
