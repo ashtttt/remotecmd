@@ -59,17 +59,36 @@ func (c *comm) Run() (int, error) {
 			session.Stdin = os.Stdin
 			session.Stdout = os.Stdout
 			session.Stderr = os.Stderr
-			err = session.Run(c.config.Command)
-			chn <- node
-			defer c.client.Close()
-			defer session.Close()
+			err = session.Start(c.config.Command)
+			time.Sleep(100 * time.Millisecond)
+
+			go func(localnode string) {
+				err := session.Wait()
+				status := 0
+
+				if err != nil {
+					switch err.(type) {
+					case *ssh.ExitError:
+						status = err.(*ssh.ExitError).ExitStatus()
+						colorstring.Printf("Remote command exited with '%d' on node %s \n", status, localnode)
+					case *ssh.ExitMissingError:
+						colorstring.Printf("Remote command exited without exit status or exit signal on %s \n", localnode)
+						colorstring.Println(err.Error())
+					}
+				}
+				chn <- localnode
+				defer c.client.Close()
+				defer session.Close()
+
+			}(node)
+
 		}(node)
 	}
 
 	for i := 0; i < len(c.config.Nodes); {
 		select {
 		case node := <-chn:
-			colorstring.Println("[yellow]completed execution on node " + node)
+			colorstring.Println("[yellow]Completed execution on node " + node)
 			tempNodes = removeItem(node, tempNodes)
 			i++
 		case error := <-erchn:
@@ -77,11 +96,11 @@ func (c *comm) Run() (int, error) {
 		case <-time.After(10 * time.Second):
 			fmt.Printf("still continuing after.... %d sec \n", time.Since(now)/time.Second)
 		case <-timeout:
-			colorstring.Println("[red]fallowing nodes did not get completed")
+			colorstring.Println("[red]Could NOT run command on fallowing nodes")
 			for _, ip := range tempNodes {
 				colorstring.Println("[red]" + ip)
 			}
-			return 1, errors.New("operation took more than a minute, exiting. There may be a un-fineshed nodes. Please check output")
+			return 1, errors.New("Process took more than a minute, exiting. There may be a un-fineshed nodes. Please check output")
 		}
 	}
 	return 0, nil
@@ -128,7 +147,7 @@ func (c *comm) newSession(node string) (*ssh.Session, error) {
 func (c *comm) getBastion() error {
 	socketlocation := os.Getenv("SSH_AUTH_SOCK")
 	if socketlocation == "" {
-		return fmt.Errorf("%s", errors.New("ssh agent is NOT running. Please start to continue"))
+		return fmt.Errorf("%s", errors.New("SSH agent is NOT running. Please check"))
 	}
 
 	agentConn, err := net.Dial("unix", socketlocation)

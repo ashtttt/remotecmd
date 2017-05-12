@@ -7,7 +7,6 @@ import (
 )
 
 func main() {
-
 	cli := NewCLI()
 	cli.Args = os.Args[1:]
 
@@ -15,6 +14,9 @@ func main() {
 
 	if err != nil {
 		colorstring.Println("[red]" + err.Error())
+		if cli.NeedHelp == true {
+			cli.PrintHelp()
+		}
 	}
 
 	os.Exit(0)
