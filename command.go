@@ -99,6 +99,7 @@ func (v *ValidateCommand) Set(templateName string) error {
 
 func (r *RunCommand) Run() error {
 	filepath, err := os.Getwd()
+	var awsAccountID string
 
 	content, err := ioutil.ReadFile(filepath + "/" + r.TemplateName)
 	if err != nil {
@@ -116,7 +117,8 @@ func (r *RunCommand) Run() error {
 	}
 
 	if len(r.Input.Remote.Aws.Nameprefix) > 0 {
-		instances, err := getAWSNodes(r.Input.Remote.Aws.Nameprefix)
+		instances, awsid, err := getAWSNodes(r.Input.Remote.Aws.Nameprefix)
+		awsAccountID = awsid
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -132,11 +134,17 @@ func (r *RunCommand) Run() error {
 	}
 
 	comm := ssh.New(config)
-	colorstring.Printf("[yellow]Command: `%s` will be executed in fallowing nodes.Please confirm \n", r.Input.Command)
+	colorstring.Printf("[yellow]Verify below details and confirm \n")
+	colorstring.Printf("[yellow]Command: %s \n", r.Input.Command)
+	if len(awsAccountID) > 0 {
+		colorstring.Printf("[yellow]AWS Account: %s \n", awsAccountID)
+	}
+
+	colorstring.Printf("[yellow]Nodes:\n")
 	for _, ip := range r.Input.Remote.Hosts {
 		colorstring.Printf("[yellow] %s \n", ip)
 	}
-	colorstring.Printf("Enter (yes) or (no):")
+	colorstring.Printf("Enter (yes) to continue:")
 	var confirmation string
 	fmt.Scanf("%s", &confirmation)
 
@@ -159,8 +167,10 @@ func (r *RunCommand) Set(templateName string) error {
 	return nil
 }
 
-func getAWSNodes(namePrefix string) ([]string, error) {
+func getAWSNodes(namePrefix string) ([]string, string, error) {
+	os.Setenv("AWS_REGION", "us-east-1")
 	var ips []string
+	var accountID string
 	sess := session.Must(session.NewSession())
 
 	svc := ec2.New(sess)
@@ -183,16 +193,15 @@ func getAWSNodes(namePrefix string) ([]string, error) {
 	}
 	resp, err := svc.DescribeInstances(params)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-
+	accountID = *resp.Reservations[0].OwnerId
 	for idx := range resp.Reservations {
 		for _, instance := range resp.Reservations[idx].Instances {
-
 			ips = append(ips, *instance.PrivateIpAddress)
 		}
 	}
-	return ips, nil
+	return ips, accountID, nil
 
 }
 

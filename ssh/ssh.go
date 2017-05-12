@@ -72,8 +72,7 @@ func (c *comm) Run() (int, error) {
 						status = err.(*ssh.ExitError).ExitStatus()
 						colorstring.Printf("Remote command exited with '%d' on node %s \n", status, localnode)
 					case *ssh.ExitMissingError:
-						colorstring.Printf("Remote command exited without exit status or exit signal on %s \n", localnode)
-						colorstring.Println(err.Error())
+						colorstring.Printf("[magenta]Remote command exited without exit status or exit signal on %s \n", localnode)
 					}
 				}
 				chn <- localnode
